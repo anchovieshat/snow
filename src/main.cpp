@@ -29,8 +29,8 @@ u32 mesh_size = 0;
 
 typedef struct Vertex {
 	glm::vec3 point;
-	u32 t_point;
-	u32 tex_id;
+	u8 t_point;
+	u8 tex_id;
 } Vertex;
 
 Vertex new_vert(glm::vec3 edge, glm::vec3 offset, u8 tex_id, u8 t_point) {
@@ -132,12 +132,12 @@ void add_face(Vertex *mesh, u32 *mesh_size, u8 side, u32 x, u32 y, u32 z, u8 tex
 }
 
 Vertex *generate_mesh(u8 chunk[CHUNK_WIDTH + 2][CHUNK_HEIGHT + 2][CHUNK_DEPTH + 2]) {
-	Vertex *mesh = (Vertex *)malloc((CHUNK_WIDTH + 2) * (CHUNK_HEIGHT + 2) * (CHUNK_DEPTH + 2) * 36);
+	Vertex *mesh = (Vertex *)malloc((CHUNK_WIDTH + 2) * (CHUNK_HEIGHT + 2) * (CHUNK_DEPTH + 2) * sizeof(Vertex) * 36);
 	memset(mesh, 0, (CHUNK_WIDTH + 2) * (CHUNK_HEIGHT + 2) * (CHUNK_DEPTH + 2) * 36);
 
-	for (u32 x = 1; x <= CHUNK_WIDTH; ++x) {
-		for (u32 y = 1; y <= CHUNK_HEIGHT; ++y) {
-			for (u32 z = 1; z <= CHUNK_DEPTH; ++z) {
+	for (u32 x = 1; x < CHUNK_WIDTH; ++x) {
+		for (u32 y = 1; y < CHUNK_HEIGHT; ++y) {
+			for (u32 z = 1; z < CHUNK_DEPTH; ++z) {
 				if (chunk[x][y][z] != 0) {
 					u8 neighbors = get_air_neighbors(chunk, x, y, z);
 
@@ -215,49 +215,113 @@ int main() {
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_FRONT);
 	glFrontFace(GL_CW);
-
-	glm::vec3 cam_pos = glm::vec3(1.0, 0.0, 10.0);
+	//glClearColor(0.2, 0.8, 1.0, 1.0);
 
 	u8 chunk[CHUNK_WIDTH + 2][CHUNK_HEIGHT + 2][CHUNK_DEPTH + 2];
 	memset(chunk, 0, sizeof(chunk));
-	chunk[1][1][1] = 1;
-	chunk[1][2][1] = 2;
-	chunk[1][1][2] = 1;
-	chunk[2][2][1] = 2;
-	chunk[2][1][2] = 1;
-	chunk[2][2][2] = 2;
+
+	for (u32 x = 1; x < CHUNK_WIDTH; x++) {
+		for (u32 y = 1; y < CHUNK_HEIGHT; y++) {
+			for (u32 z = 1; z < CHUNK_DEPTH; z++) {
+				if ((x % 2) == 0) {
+					chunk[x][y][z] = 1;
+				} else {
+					chunk[x][y][z] = 2;
+				}
+			}
+		}
+	}
+
 	Vertex *mesh = generate_mesh(chunk);
 
 	glBindBuffer(GL_ARRAY_BUFFER, v_mesh);
 	glBufferData(GL_ARRAY_BUFFER, mesh_size * sizeof(Vertex), mesh, GL_STATIC_DRAW);
 
+	f32 current_time = (f32)SDL_GetTicks() / 60.0;
+	f32 t = 0.0;
+
+	glm::vec3 cam_pos = glm::vec3(0.0, 10.0, 0.0);
+	glm::vec3 cam_front = glm::vec3(0.0, 0.0, 1.0);
+	glm::vec3 cam_up = glm::vec3(0.0, 1.0, 0.0);
+
+	f32 yaw = 0.0f;
+	f32 pitch = 0.0f;
+	f32 cam_speed = 0.75f;
+
 	bool running = true;
+	bool warped = false;
+	bool warp = false;
 	while (running) {
 		SDL_Event event;
+
+		f32 new_time = (f32)SDL_GetTicks() / 60.0;
+		f32 dt = new_time - current_time;
+		current_time = new_time;
+		t += dt;
+
+		SDL_PumpEvents();
+        const u8 *state = SDL_GetKeyboardState(NULL);
+		if (state[SDL_SCANCODE_W]) {
+			cam_pos += cam_speed * cam_front * dt;
+		}
+		if (state[SDL_SCANCODE_S]) {
+			cam_pos -= cam_speed * cam_front * dt;
+		}
+		if (state[SDL_SCANCODE_A]) {
+			cam_pos -= glm::normalize(glm::cross(cam_front, cam_up)) * cam_speed * dt;
+		}
+		if (state[SDL_SCANCODE_D]) {
+			cam_pos += glm::normalize(glm::cross(cam_front, cam_up)) * cam_speed * dt;
+		}
 
 		while (SDL_PollEvent(&event)) {
 			switch (event.type) {
 				case SDL_KEYDOWN: {
 					switch (event.key.keysym.sym) {
-						case SDLK_UP: {
-							cam_pos.y += 0.1f;
-						} break;
-						case SDLK_DOWN: {
-							cam_pos.y -= 0.1f;
-						} break;
-						case SDLK_LEFT: {
-							cam_pos.x -= 0.1f;
-						} break;
-						case SDLK_RIGHT: {
-							cam_pos.x += 0.1f;
-						} break;
-						case SDLK_LSHIFT: {
-							cam_pos.z -= 0.1f;
-						} break;
-						case SDLK_SPACE: {
-							cam_pos.z += 0.1f;
+						case SDLK_ESCAPE: {
+							warp = false;
+							SDL_SetRelativeMouseMode(SDL_FALSE);
 						} break;
 					}
+				} break;
+				case SDL_MOUSEMOTION: {
+					if (!warped) {
+						i32 mouse_x, mouse_y;
+						SDL_GetRelativeMouseState(&mouse_x, &mouse_y);
+						if (warp) {
+							SDL_WarpMouseInWindow(window, screen_width / 2, screen_height / 2);
+							warped = true;
+						} else {
+							continue;
+						}
+
+						f32 x_off = mouse_x;
+						f32 y_off = -mouse_y;
+
+						f32 mouse_speed = 0.20;
+						x_off *= mouse_speed;
+						y_off *= mouse_speed;
+
+						yaw += x_off;
+						pitch += y_off;
+
+						if (pitch > 89.0f) {
+							pitch = 89.0f;
+						}
+
+						if (pitch < -89.f) {
+							pitch = -89.0f;
+						}
+
+						cam_front = glm::vec3(cos(glm::radians(yaw)) * cos(glm::radians(pitch)), sin(glm::radians(pitch)), sin(glm::radians(yaw)) * cos(glm::radians(pitch)));
+
+					} else {
+						warped = false;
+					}
+				} break;
+				case SDL_MOUSEBUTTONDOWN: {
+					SDL_SetRelativeMouseMode(SDL_TRUE);
+					warp = true;
 				} break;
 				case SDL_QUIT: {
 					running = false;
@@ -274,16 +338,15 @@ int main() {
 
 		glBindBuffer(GL_ARRAY_BUFFER, v_mesh);
 		glVertexAttribPointer(a_points, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
-		glVertexAttribIPointer(a_tex_side, 1, GL_INT, sizeof(Vertex), (void *)STRUCT_OFFSET(Vertex, t_point));
-		glVertexAttribIPointer(a_tex_idx, 1, GL_INT, sizeof(Vertex), (void *)STRUCT_OFFSET(Vertex, tex_id));
+		glVertexAttribIPointer(a_tex_side, 1, GL_UNSIGNED_BYTE, sizeof(Vertex), (void *)STRUCT_OFFSET(Vertex, t_point));
+		glVertexAttribIPointer(a_tex_idx, 1, GL_UNSIGNED_BYTE, sizeof(Vertex), (void *)STRUCT_OFFSET(Vertex, tex_id));
 
 		glBindTexture(GL_TEXTURE_2D, atlas_tex);
 		glActiveTexture(GL_TEXTURE0);
 
-
 		f32 s_ratio = (f32)screen_width / (f32)screen_height;
-		glm::mat4 projection = glm::perspective(glm::radians(45.0f), s_ratio, 1.0f, 100.0f);
-		glm::mat4 view = glm::lookAt(cam_pos, glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+		glm::mat4 projection = glm::perspective(glm::radians(45.0f), s_ratio, 1.0f, 500.0f);
+		glm::mat4 view = glm::lookAt(cam_pos, cam_pos + cam_front, cam_up);
 		glm::mat4 pv = projection * view;
 
 		glm::mat4 model = glm::mat4(1.0);
