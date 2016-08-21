@@ -14,6 +14,8 @@ typedef double f64;
 
 #define ARRAY_SIZE(x) sizeof(x) / sizeof(*x)
 #define STRUCT_OFFSET(st, m) ((size_t)(&((st *)0)->m))
+#define COMPRESS_THREE(x, y, z, x_max, y_max) ((z) * (x_max) * (y_max)) + ((y) * (x_max)) + (x)
+#define COMPRESS_TWO(x, y, x_max) ((y) * (x_max)) + (x)
 
 // Allocates a string, must be freed by user
 char *file_to_string(const char *filename) {

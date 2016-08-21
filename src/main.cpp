@@ -7,12 +7,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define STB_PERLIN_IMPLEMENTATION
+#include "stb_perlin.h"
+
 #include "common.h"
 #include "gl_helper.h"
 
-#define CHUNK_WIDTH 16
-#define CHUNK_HEIGHT 16
-#define CHUNK_DEPTH 16
+#define CHUNK_WIDTH 128
+#define CHUNK_HEIGHT 64
+#define CHUNK_DEPTH 128
 
 glm::vec3 cube_edges[] = {
 	glm::vec3(-0.0f, -0.0f,  1.0f),
@@ -50,24 +53,24 @@ enum {
 	SIDE_RIGHT  = 0b100000,
 };
 
-u8 get_air_neighbors(u8 chunk[CHUNK_WIDTH + 2][CHUNK_HEIGHT + 2][CHUNK_DEPTH + 2], u32 x, u32 y, u32 z) {
+u8 get_air_neighbors(u8 *chunk, u32 x, u32 y, u32 z) {
 	u8 neighbors = 0;
-	if (chunk[x - 1][y][z] == 0) {
+	if (chunk[COMPRESS_THREE(x - 1, y, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
 		neighbors |= SIDE_LEFT;
 	}
-	if (chunk[x + 1][y][z] == 0) {
+	if (chunk[COMPRESS_THREE(x + 1, y, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
 		neighbors |= SIDE_RIGHT;
 	}
-	if (chunk[x][y + 1][z] == 0) {
+	if (chunk[COMPRESS_THREE(x, y + 1, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
 		neighbors |= SIDE_TOP;
 	}
-	if (chunk[x][y - 1][z] == 0) {
+	if (chunk[COMPRESS_THREE(x, y - 1, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
 		neighbors |= SIDE_BOTTOM;
 	}
-	if (chunk[x][y][z + 1] == 0) {
+	if (chunk[COMPRESS_THREE(x, y, z + 1, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
 		neighbors |= SIDE_FRONT;
 	}
-	if (chunk[x][y][z - 1] == 0) {
+	if (chunk[COMPRESS_THREE(x, y, z - 1, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
 		neighbors |= SIDE_BACK;
 	}
 
@@ -131,33 +134,71 @@ void add_face(Vertex *mesh, u32 *mesh_size, u8 side, u32 x, u32 y, u32 z, u8 tex
 	*mesh_size += 6;
 }
 
-Vertex *generate_mesh(u8 chunk[CHUNK_WIDTH + 2][CHUNK_HEIGHT + 2][CHUNK_DEPTH + 2]) {
+u8 *generate_chunk(u32 x_off, u32 z_off) {
+	u8 *chunk = (u8 *)malloc((CHUNK_WIDTH + 2) * (CHUNK_HEIGHT + 2) * (CHUNK_DEPTH + 2));
+	memset(chunk, 0, (CHUNK_WIDTH + 2) * (CHUNK_HEIGHT + 2) * (CHUNK_DEPTH + 2));
+
+	f32 min_height = CHUNK_HEIGHT / 5;
+	f32 avg_height = CHUNK_HEIGHT / 2;
+
+	for (u32 x = 1; x < CHUNK_WIDTH; ++x) {
+		for (u32 z = 1; z < CHUNK_DEPTH; ++z) {
+
+			f32 column_height = avg_height;
+			for (u8 o = 5; o < 8; o++) {
+				f32 scale = (f32)(2 << o) * 1.01f;
+				column_height += (f32)(o << 2) * stb_perlin_noise3((f32)(x + x_off) / scale, (f32)(z + z_off) / scale, o * 2.0f, 256, 256, 256);
+			}
+
+			if (column_height > CHUNK_HEIGHT) {
+				column_height = CHUNK_HEIGHT;
+			}
+
+			if (column_height < min_height) {
+				column_height = min_height;
+			}
+
+			for (u32 h = min_height - 1; h < column_height; h++) {
+				if ((h % 2) == 0)  {
+					chunk[COMPRESS_THREE(x, h, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] = 1;
+				} else {
+					chunk[COMPRESS_THREE(x, h, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] = 2;
+				}
+			}
+		}
+	}
+
+	return chunk;
+}
+
+Vertex *generate_mesh(u8 *chunk) {
 	Vertex *mesh = (Vertex *)malloc((CHUNK_WIDTH + 2) * (CHUNK_HEIGHT + 2) * (CHUNK_DEPTH + 2) * sizeof(Vertex) * 36);
 	memset(mesh, 0, (CHUNK_WIDTH + 2) * (CHUNK_HEIGHT + 2) * (CHUNK_DEPTH + 2) * 36);
 
 	for (u32 x = 1; x < CHUNK_WIDTH; ++x) {
 		for (u32 y = 1; y < CHUNK_HEIGHT; ++y) {
 			for (u32 z = 1; z < CHUNK_DEPTH; ++z) {
-				if (chunk[x][y][z] != 0) {
+				u64 id = COMPRESS_THREE(x, y, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2);
+				if (chunk[id] != 0) {
 					u8 neighbors = get_air_neighbors(chunk, x, y, z);
 
 					if (neighbors & SIDE_TOP) {
-						add_face(mesh, &mesh_size, SIDE_TOP, x, y, z, chunk[x][y][z]);
+						add_face(mesh, &mesh_size, SIDE_TOP, x, y, z, chunk[id]);
 					}
 					if (neighbors & SIDE_BOTTOM) {
-						add_face(mesh, &mesh_size, SIDE_BOTTOM, x, y, z, chunk[x][y][z]);
+						add_face(mesh, &mesh_size, SIDE_BOTTOM, x, y, z, chunk[id]);
 					}
 					if (neighbors & SIDE_LEFT) {
-						add_face(mesh, &mesh_size, SIDE_LEFT, x, y, z, chunk[x][y][z]);
+						add_face(mesh, &mesh_size, SIDE_LEFT, x, y, z, chunk[id]);
 					}
 					if (neighbors & SIDE_RIGHT) {
-						add_face(mesh, &mesh_size, SIDE_RIGHT, x, y, z, chunk[x][y][z]);
+						add_face(mesh, &mesh_size, SIDE_RIGHT, x, y, z, chunk[id]);
 					}
 					if (neighbors & SIDE_FRONT) {
-						add_face(mesh, &mesh_size, SIDE_FRONT, x, y, z, chunk[x][y][z]);
+						add_face(mesh, &mesh_size, SIDE_FRONT, x, y, z, chunk[id]);
 					}
 					if (neighbors & SIDE_BACK) {
-						add_face(mesh, &mesh_size, SIDE_BACK, x, y, z, chunk[x][y][z]);
+						add_face(mesh, &mesh_size, SIDE_BACK, x, y, z, chunk[id]);
 					}
 				}
 			}
@@ -217,21 +258,8 @@ int main() {
 	glFrontFace(GL_CW);
 	//glClearColor(0.2, 0.8, 1.0, 1.0);
 
-	u8 chunk[CHUNK_WIDTH + 2][CHUNK_HEIGHT + 2][CHUNK_DEPTH + 2];
-	memset(chunk, 0, sizeof(chunk));
 
-	for (u32 x = 1; x < CHUNK_WIDTH; x++) {
-		for (u32 y = 1; y < CHUNK_HEIGHT; y++) {
-			for (u32 z = 1; z < CHUNK_DEPTH; z++) {
-				if ((x % 2) == 0) {
-					chunk[x][y][z] = 1;
-				} else {
-					chunk[x][y][z] = 2;
-				}
-			}
-		}
-	}
-
+    u8 *chunk = generate_chunk(0, 0);
 	Vertex *mesh = generate_mesh(chunk);
 
 	glBindBuffer(GL_ARRAY_BUFFER, v_mesh);
@@ -307,9 +335,7 @@ int main() {
 
 						if (pitch > 89.0f) {
 							pitch = 89.0f;
-						}
-
-						if (pitch < -89.f) {
+						} else if (pitch < -89.f) {
 							pitch = -89.0f;
 						}
 
