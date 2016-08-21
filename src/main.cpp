@@ -14,7 +14,7 @@
 #include "gl_helper.h"
 
 #define CHUNK_WIDTH 128
-#define CHUNK_HEIGHT 64
+#define CHUNK_HEIGHT 128
 #define CHUNK_DEPTH 128
 
 glm::vec3 cube_edges[] = {
@@ -34,27 +34,33 @@ typedef struct Vertex {
 	glm::vec3 point;
 	u8 t_point;
 	u8 tex_id;
+	f32 ao;
 } Vertex;
 
-Vertex new_vert(glm::vec3 edge, glm::vec3 offset, u8 tex_id, u8 t_point) {
+Vertex new_vert(glm::vec3 edge, glm::vec3 offset, u8 tex_id, u8 t_point, f32 ao) {
 	Vertex v;
 	v.point = edge + offset;
 	v.t_point = t_point;
 	v.tex_id = tex_id;
+	v.ao = ao;
 	return v;
 }
 
 enum {
-	SIDE_FRONT  = 0b000001,
-	SIDE_BACK   = 0b000010,
-	SIDE_TOP    = 0b000100,
-	SIDE_BOTTOM = 0b001000,
-	SIDE_LEFT   = 0b010000,
-	SIDE_RIGHT  = 0b100000,
+	SIDE_FRONT    = 0b0000000001,
+	SIDE_BACK     = 0b0000000010,
+	SIDE_TOP      = 0b0000000100,
+	SIDE_BOTTOM   = 0b0000001000,
+	SIDE_LEFT     = 0b0000010000,
+	SIDE_RIGHT    = 0b0000100000,
+	SIDE_TL_DIAG  = 0b0001000000,
+	SIDE_TR_DIAG  = 0b0010000000,
+	SIDE_BL_DIAG  = 0b0100000000,
+	SIDE_BR_DIAG  = 0b1000000000,
 };
 
-u8 get_air_neighbors(u8 *chunk, u32 x, u32 y, u32 z) {
-	u8 neighbors = 0;
+u16 get_air_neighbors(u8 *chunk, u32 x, u32 y, u32 z) {
+	u16 neighbors = 0;
 	if (chunk[COMPRESS_THREE(x - 1, y, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
 		neighbors |= SIDE_LEFT;
 	}
@@ -74,60 +80,86 @@ u8 get_air_neighbors(u8 *chunk, u32 x, u32 y, u32 z) {
 		neighbors |= SIDE_BACK;
 	}
 
+	if (chunk[COMPRESS_THREE(x - 1, y, z - 1, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
+		neighbors |= SIDE_BL_DIAG;
+	}
+	if (chunk[COMPRESS_THREE(x + 1, y, z - 1, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
+		neighbors |= SIDE_BR_DIAG;
+	}
+	if (chunk[COMPRESS_THREE(x - 1, y, z + 1, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
+		neighbors |= SIDE_TL_DIAG;
+	}
+	if (chunk[COMPRESS_THREE(x + 1, y, z + 1, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
+		neighbors |= SIDE_TR_DIAG;
+	}
+
 	return neighbors;
 }
 
-void add_face(Vertex *mesh, u32 *mesh_size, u8 side, u32 x, u32 y, u32 z, u8 tex_id) {
+void add_face(Vertex *mesh, u32 *mesh_size, u8 side, u32 x, u32 y, u32 z, u8 tex_id, u16 neighbors) {
 	glm::vec3 offset = glm::vec3(x, y, z);
+
+	u16 g_ao = ~neighbors;
+
+	f32 ao = 1.0;
+	if ((g_ao & SIDE_LEFT) || (g_ao & SIDE_RIGHT)) {
+		ao -= 0.2f;
+	}
+	if ((g_ao & SIDE_FRONT) || (g_ao & SIDE_BACK)) {
+		ao -= 0.2f;
+	}
+	if ((g_ao & SIDE_TL_DIAG) || (g_ao & SIDE_TR_DIAG) || (g_ao & SIDE_BL_DIAG) || (g_ao & SIDE_BR_DIAG)) {
+		ao -= 0.2f;
+	}
 
 	switch (side) {
 		case SIDE_TOP: {
-			mesh[*mesh_size    ] = new_vert(cube_edges[2], offset, tex_id, 0);
-			mesh[*mesh_size + 1] = new_vert(cube_edges[3], offset, tex_id, 1);
-			mesh[*mesh_size + 2] = new_vert(cube_edges[7], offset, tex_id, 3);
-			mesh[*mesh_size + 3] = new_vert(cube_edges[2], offset, tex_id, 0);
-			mesh[*mesh_size + 4] = new_vert(cube_edges[7], offset, tex_id, 3);
-			mesh[*mesh_size + 5] = new_vert(cube_edges[6], offset, tex_id, 2);
+			mesh[*mesh_size    ] = new_vert(cube_edges[2], offset, tex_id, 0, ao);
+			mesh[*mesh_size + 1] = new_vert(cube_edges[3], offset, tex_id, 1, ao);
+			mesh[*mesh_size + 2] = new_vert(cube_edges[7], offset, tex_id, 3, ao);
+			mesh[*mesh_size + 3] = new_vert(cube_edges[2], offset, tex_id, 0, ao);
+			mesh[*mesh_size + 4] = new_vert(cube_edges[7], offset, tex_id, 3, ao);
+			mesh[*mesh_size + 5] = new_vert(cube_edges[6], offset, tex_id, 2, ao);
 		} break;
 		case SIDE_BOTTOM: {
-			mesh[*mesh_size    ] = new_vert(cube_edges[4], offset, tex_id, 0);
-			mesh[*mesh_size + 1] = new_vert(cube_edges[5], offset, tex_id, 1);
-			mesh[*mesh_size + 2] = new_vert(cube_edges[1], offset, tex_id, 3);
-			mesh[*mesh_size + 3] = new_vert(cube_edges[4], offset, tex_id, 0);
-			mesh[*mesh_size + 4] = new_vert(cube_edges[1], offset, tex_id, 3);
-			mesh[*mesh_size + 5] = new_vert(cube_edges[0], offset, tex_id, 2);
+			mesh[*mesh_size    ] = new_vert(cube_edges[4], offset, tex_id, 0, ao);
+			mesh[*mesh_size + 1] = new_vert(cube_edges[5], offset, tex_id, 1, ao);
+			mesh[*mesh_size + 2] = new_vert(cube_edges[1], offset, tex_id, 3, ao);
+			mesh[*mesh_size + 3] = new_vert(cube_edges[4], offset, tex_id, 0, ao);
+			mesh[*mesh_size + 4] = new_vert(cube_edges[1], offset, tex_id, 3, ao);
+			mesh[*mesh_size + 5] = new_vert(cube_edges[0], offset, tex_id, 2, ao);
 		} break;
 		case SIDE_LEFT: {
-			mesh[*mesh_size    ] = new_vert(cube_edges[4], offset, tex_id, 0);
-			mesh[*mesh_size + 1] = new_vert(cube_edges[0], offset, tex_id, 1);
-			mesh[*mesh_size + 2] = new_vert(cube_edges[2], offset, tex_id, 3);
-			mesh[*mesh_size + 3] = new_vert(cube_edges[4], offset, tex_id, 0);
-			mesh[*mesh_size + 4] = new_vert(cube_edges[2], offset, tex_id, 3);
-			mesh[*mesh_size + 5] = new_vert(cube_edges[6], offset, tex_id, 2);
+			mesh[*mesh_size    ] = new_vert(cube_edges[4], offset, tex_id, 0, ao);
+			mesh[*mesh_size + 1] = new_vert(cube_edges[0], offset, tex_id, 1, ao);
+			mesh[*mesh_size + 2] = new_vert(cube_edges[2], offset, tex_id, 3, ao);
+			mesh[*mesh_size + 3] = new_vert(cube_edges[4], offset, tex_id, 0, ao);
+			mesh[*mesh_size + 4] = new_vert(cube_edges[2], offset, tex_id, 3, ao);
+			mesh[*mesh_size + 5] = new_vert(cube_edges[6], offset, tex_id, 2, ao);
 		} break;
 		case SIDE_RIGHT: {
-			mesh[*mesh_size    ] = new_vert(cube_edges[1], offset, tex_id, 0);
-			mesh[*mesh_size + 1] = new_vert(cube_edges[5], offset, tex_id, 1);
-			mesh[*mesh_size + 2] = new_vert(cube_edges[7], offset, tex_id, 3);
-			mesh[*mesh_size + 3] = new_vert(cube_edges[1], offset, tex_id, 0);
-			mesh[*mesh_size + 4] = new_vert(cube_edges[7], offset, tex_id, 3);
-			mesh[*mesh_size + 5] = new_vert(cube_edges[3], offset, tex_id, 2);
+			mesh[*mesh_size    ] = new_vert(cube_edges[1], offset, tex_id, 0, ao);
+			mesh[*mesh_size + 1] = new_vert(cube_edges[5], offset, tex_id, 1, ao);
+			mesh[*mesh_size + 2] = new_vert(cube_edges[7], offset, tex_id, 3, ao);
+			mesh[*mesh_size + 3] = new_vert(cube_edges[1], offset, tex_id, 0, ao);
+			mesh[*mesh_size + 4] = new_vert(cube_edges[7], offset, tex_id, 3, ao);
+			mesh[*mesh_size + 5] = new_vert(cube_edges[3], offset, tex_id, 2, ao);
 		} break;
 		case SIDE_FRONT: {
-			mesh[*mesh_size    ] = new_vert(cube_edges[0], offset, tex_id, 0);
-			mesh[*mesh_size + 1] = new_vert(cube_edges[1], offset, tex_id, 1);
-			mesh[*mesh_size + 2] = new_vert(cube_edges[3], offset, tex_id, 3);
-			mesh[*mesh_size + 3] = new_vert(cube_edges[0], offset, tex_id, 0);
-			mesh[*mesh_size + 4] = new_vert(cube_edges[3], offset, tex_id, 3);
-			mesh[*mesh_size + 5] = new_vert(cube_edges[2], offset, tex_id, 2);
+			mesh[*mesh_size    ] = new_vert(cube_edges[0], offset, tex_id, 0, ao);
+			mesh[*mesh_size + 1] = new_vert(cube_edges[1], offset, tex_id, 1, ao);
+			mesh[*mesh_size + 2] = new_vert(cube_edges[3], offset, tex_id, 3, ao);
+			mesh[*mesh_size + 3] = new_vert(cube_edges[0], offset, tex_id, 0, ao);
+			mesh[*mesh_size + 4] = new_vert(cube_edges[3], offset, tex_id, 3, ao);
+			mesh[*mesh_size + 5] = new_vert(cube_edges[2], offset, tex_id, 2, ao);
 		} break;
 		case SIDE_BACK: {
-			mesh[*mesh_size    ] = new_vert(cube_edges[5], offset, tex_id, 0);
-			mesh[*mesh_size + 1] = new_vert(cube_edges[4], offset, tex_id, 1);
-			mesh[*mesh_size + 2] = new_vert(cube_edges[6], offset, tex_id, 3);
-			mesh[*mesh_size + 3] = new_vert(cube_edges[5], offset, tex_id, 0);
-			mesh[*mesh_size + 4] = new_vert(cube_edges[6], offset, tex_id, 3);
-			mesh[*mesh_size + 5] = new_vert(cube_edges[7], offset, tex_id, 2);
+			mesh[*mesh_size    ] = new_vert(cube_edges[5], offset, tex_id, 0, ao);
+			mesh[*mesh_size + 1] = new_vert(cube_edges[4], offset, tex_id, 1, ao);
+			mesh[*mesh_size + 2] = new_vert(cube_edges[6], offset, tex_id, 3, ao);
+			mesh[*mesh_size + 3] = new_vert(cube_edges[5], offset, tex_id, 0, ao);
+			mesh[*mesh_size + 4] = new_vert(cube_edges[6], offset, tex_id, 3, ao);
+			mesh[*mesh_size + 5] = new_vert(cube_edges[7], offset, tex_id, 2, ao);
 		} break;
 	}
 
@@ -138,8 +170,8 @@ u8 *generate_chunk(u32 x_off, u32 z_off) {
 	u8 *chunk = (u8 *)malloc((CHUNK_WIDTH + 2) * (CHUNK_HEIGHT + 2) * (CHUNK_DEPTH + 2));
 	memset(chunk, 0, (CHUNK_WIDTH + 2) * (CHUNK_HEIGHT + 2) * (CHUNK_DEPTH + 2));
 
-	f32 min_height = CHUNK_HEIGHT / 5;
-	f32 avg_height = CHUNK_HEIGHT / 2;
+	f32 min_height = CHUNK_HEIGHT / 6;
+	f32 avg_height = CHUNK_HEIGHT / 3;
 
 	for (u32 x = 1; x < CHUNK_WIDTH; ++x) {
 		for (u32 z = 1; z < CHUNK_DEPTH; ++z) {
@@ -147,7 +179,7 @@ u8 *generate_chunk(u32 x_off, u32 z_off) {
 			f32 column_height = avg_height;
 			for (u8 o = 5; o < 8; o++) {
 				f32 scale = (f32)(2 << o) * 1.01f;
-				column_height += (f32)(o << 2) * stb_perlin_noise3((f32)(x + x_off) / scale, (f32)(z + z_off) / scale, o * 2.0f, 256, 256, 256);
+				column_height += (f32)(o << 3) * stb_perlin_noise3((f32)(x + x_off) / scale, (f32)(z + z_off) / scale, o * 2.0f, 256, 256, 256);
 			}
 
 			if (column_height > CHUNK_HEIGHT) {
@@ -159,11 +191,7 @@ u8 *generate_chunk(u32 x_off, u32 z_off) {
 			}
 
 			for (u32 h = min_height - 1; h < column_height; h++) {
-				if ((h % 2) == 0)  {
-					chunk[COMPRESS_THREE(x, h, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] = 1;
-				} else {
-					chunk[COMPRESS_THREE(x, h, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] = 2;
-				}
+				chunk[COMPRESS_THREE(x, h, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] = 2;
 			}
 		}
 	}
@@ -180,25 +208,26 @@ Vertex *generate_mesh(u8 *chunk) {
 			for (u32 z = 1; z < CHUNK_DEPTH; ++z) {
 				u64 id = COMPRESS_THREE(x, y, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2);
 				if (chunk[id] != 0) {
-					u8 neighbors = get_air_neighbors(chunk, x, y, z);
+					u16 neighbors = get_air_neighbors(chunk, x, y, z);
+					u16 ao_neighbors = get_air_neighbors(chunk, x, y + 1, z);
 
 					if (neighbors & SIDE_TOP) {
-						add_face(mesh, &mesh_size, SIDE_TOP, x, y, z, chunk[id]);
+						add_face(mesh, &mesh_size, SIDE_TOP, x, y, z, chunk[id], ao_neighbors);
 					}
 					if (neighbors & SIDE_BOTTOM) {
-						add_face(mesh, &mesh_size, SIDE_BOTTOM, x, y, z, chunk[id]);
+						add_face(mesh, &mesh_size, SIDE_BOTTOM, x, y, z, chunk[id], ao_neighbors);
 					}
 					if (neighbors & SIDE_LEFT) {
-						add_face(mesh, &mesh_size, SIDE_LEFT, x, y, z, chunk[id]);
+						add_face(mesh, &mesh_size, SIDE_LEFT, x, y, z, chunk[id], ao_neighbors);
 					}
 					if (neighbors & SIDE_RIGHT) {
-						add_face(mesh, &mesh_size, SIDE_RIGHT, x, y, z, chunk[id]);
+						add_face(mesh, &mesh_size, SIDE_RIGHT, x, y, z, chunk[id], ao_neighbors);
 					}
 					if (neighbors & SIDE_FRONT) {
-						add_face(mesh, &mesh_size, SIDE_FRONT, x, y, z, chunk[id]);
+						add_face(mesh, &mesh_size, SIDE_FRONT, x, y, z, chunk[id], ao_neighbors);
 					}
 					if (neighbors & SIDE_BACK) {
-						add_face(mesh, &mesh_size, SIDE_BACK, x, y, z, chunk[id]);
+						add_face(mesh, &mesh_size, SIDE_BACK, x, y, z, chunk[id], ao_neighbors);
 					}
 				}
 			}
@@ -246,6 +275,7 @@ int main() {
 	GLuint a_points = glGetAttribLocation(obj_shader, "points");
 	GLuint a_tex_side = glGetAttribLocation(obj_shader, "tex_side");
 	GLuint a_tex_idx = glGetAttribLocation(obj_shader, "tex_idx");
+	GLuint a_ao = glGetAttribLocation(obj_shader, "ao");
 
 	GLuint u_model = glGetUniformLocation(obj_shader, "model");
 	GLuint u_pv = glGetUniformLocation(obj_shader, "pv");
@@ -361,11 +391,13 @@ int main() {
 		glEnableVertexAttribArray(a_points);
 		glEnableVertexAttribArray(a_tex_side);
 		glEnableVertexAttribArray(a_tex_idx);
+		glEnableVertexAttribArray(a_ao);
 
 		glBindBuffer(GL_ARRAY_BUFFER, v_mesh);
 		glVertexAttribPointer(a_points, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
 		glVertexAttribIPointer(a_tex_side, 1, GL_UNSIGNED_BYTE, sizeof(Vertex), (void *)STRUCT_OFFSET(Vertex, t_point));
 		glVertexAttribIPointer(a_tex_idx, 1, GL_UNSIGNED_BYTE, sizeof(Vertex), (void *)STRUCT_OFFSET(Vertex, tex_id));
+		glVertexAttribPointer(a_ao, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *)STRUCT_OFFSET(Vertex, ao));
 
 		glBindTexture(GL_TEXTURE_2D, atlas_tex);
 		glActiveTexture(GL_TEXTURE0);
