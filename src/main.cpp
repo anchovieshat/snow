@@ -108,48 +108,48 @@ void add_face(Vertex *mesh, u32 *mesh_size, u8 side, u32 x, u32 y, u32 z, u8 tex
 			mesh[*mesh_size + 1] = new_vert(cube_edges[3], offset, tex_id);
 			mesh[*mesh_size + 2] = new_vert(cube_edges[7], offset, tex_id);
 			mesh[*mesh_size + 3] = new_vert(cube_edges[2], offset, tex_id);
-			mesh[*mesh_size + 4] = new_vert(cube_edges[6], offset, tex_id);
-			mesh[*mesh_size + 5] = new_vert(cube_edges[7], offset, tex_id);
+			mesh[*mesh_size + 4] = new_vert(cube_edges[7], offset, tex_id);
+			mesh[*mesh_size + 5] = new_vert(cube_edges[6], offset, tex_id);
 		} break;
 		case SIDE_BOTTOM: {
 			mesh[*mesh_size    ] = new_vert(cube_edges[4], offset, tex_id);
 			mesh[*mesh_size + 1] = new_vert(cube_edges[5], offset, tex_id);
 			mesh[*mesh_size + 2] = new_vert(cube_edges[1], offset, tex_id);
 			mesh[*mesh_size + 3] = new_vert(cube_edges[4], offset, tex_id);
-			mesh[*mesh_size + 4] = new_vert(cube_edges[0], offset, tex_id);
-			mesh[*mesh_size + 5] = new_vert(cube_edges[1], offset, tex_id);
+			mesh[*mesh_size + 4] = new_vert(cube_edges[1], offset, tex_id);
+			mesh[*mesh_size + 5] = new_vert(cube_edges[0], offset, tex_id);
 		} break;
 		case SIDE_LEFT: {
 			mesh[*mesh_size    ] = new_vert(cube_edges[4], offset, tex_id);
 			mesh[*mesh_size + 1] = new_vert(cube_edges[0], offset, tex_id);
 			mesh[*mesh_size + 2] = new_vert(cube_edges[2], offset, tex_id);
 			mesh[*mesh_size + 3] = new_vert(cube_edges[4], offset, tex_id);
-			mesh[*mesh_size + 4] = new_vert(cube_edges[6], offset, tex_id);
-			mesh[*mesh_size + 5] = new_vert(cube_edges[2], offset, tex_id);
+			mesh[*mesh_size + 4] = new_vert(cube_edges[2], offset, tex_id);
+			mesh[*mesh_size + 5] = new_vert(cube_edges[6], offset, tex_id);
 		} break;
 		case SIDE_RIGHT: {
 			mesh[*mesh_size    ] = new_vert(cube_edges[1], offset, tex_id);
 			mesh[*mesh_size + 1] = new_vert(cube_edges[5], offset, tex_id);
 			mesh[*mesh_size + 2] = new_vert(cube_edges[7], offset, tex_id);
 			mesh[*mesh_size + 3] = new_vert(cube_edges[1], offset, tex_id);
-			mesh[*mesh_size + 4] = new_vert(cube_edges[3], offset, tex_id);
-			mesh[*mesh_size + 5] = new_vert(cube_edges[7], offset, tex_id);
+			mesh[*mesh_size + 4] = new_vert(cube_edges[7], offset, tex_id);
+			mesh[*mesh_size + 5] = new_vert(cube_edges[3], offset, tex_id);
 		} break;
 		case SIDE_FRONT: {
 			mesh[*mesh_size    ] = new_vert(cube_edges[0], offset, tex_id);
 			mesh[*mesh_size + 1] = new_vert(cube_edges[1], offset, tex_id);
 			mesh[*mesh_size + 2] = new_vert(cube_edges[3], offset, tex_id);
 			mesh[*mesh_size + 3] = new_vert(cube_edges[0], offset, tex_id);
-			mesh[*mesh_size + 4] = new_vert(cube_edges[2], offset, tex_id);
-			mesh[*mesh_size + 5] = new_vert(cube_edges[3], offset, tex_id);
+			mesh[*mesh_size + 4] = new_vert(cube_edges[3], offset, tex_id);
+			mesh[*mesh_size + 5] = new_vert(cube_edges[2], offset, tex_id);
 		} break;
 		case SIDE_BACK: {
 			mesh[*mesh_size    ] = new_vert(cube_edges[5], offset, tex_id);
 			mesh[*mesh_size + 1] = new_vert(cube_edges[4], offset, tex_id);
 			mesh[*mesh_size + 2] = new_vert(cube_edges[6], offset, tex_id);
 			mesh[*mesh_size + 3] = new_vert(cube_edges[5], offset, tex_id);
-			mesh[*mesh_size + 4] = new_vert(cube_edges[7], offset, tex_id);
-			mesh[*mesh_size + 5] = new_vert(cube_edges[6], offset, tex_id);
+			mesh[*mesh_size + 4] = new_vert(cube_edges[6], offset, tex_id);
+			mesh[*mesh_size + 5] = new_vert(cube_edges[7], offset, tex_id);
 		} break;
 	}
 
@@ -237,7 +237,6 @@ int main() {
 	glViewport(0, 0, screen_width, screen_height);
     glEnable(GL_DEPTH_TEST);
 	glEnable(GL_CULL_FACE);
-	glFrontFace(GL_CW);
 
 	glm::vec3 cam_pos = glm::vec3(1.0, 0.0, 5.0);
 
