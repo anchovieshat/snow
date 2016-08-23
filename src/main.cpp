@@ -17,8 +17,8 @@
 #define CHUNK_HEIGHT 128
 #define CHUNK_DEPTH 16
 
-#define NUM_X_CHUNKS 2
-#define NUM_Z_CHUNKS 2
+#define NUM_X_CHUNKS 10
+#define NUM_Z_CHUNKS 10
 
 glm::vec3 cube_edges[] = {
 	glm::vec3(-0.0f, -0.0f,  1.0f),
@@ -73,6 +73,7 @@ enum {
 
 u16 get_air_neighbors(Chunk *chunk, u32 x, u32 y, u32 z) {
 	u16 neighbors = 0;
+
     if (x == 0 || y == 0 || z == 0 || x > CHUNK_WIDTH || y > CHUNK_HEIGHT || z > CHUNK_DEPTH) {
 		return neighbors;
 	}
@@ -312,8 +313,8 @@ Chunk *generate_chunk(u32 x_off, u32 z_off) {
 	f32 min_height = CHUNK_HEIGHT / 6;
 	f32 avg_height = CHUNK_HEIGHT / 3;
 
-	for (u32 x = 1; x <= CHUNK_WIDTH; ++x) {
-		for (u32 z = 1; z <= CHUNK_DEPTH; ++z) {
+	for (u32 x = 0; x <= CHUNK_WIDTH + 1; ++x) {
+		for (u32 z = 0; z <= CHUNK_DEPTH + 1; ++z) {
 
 			f32 column_height = avg_height;
 			for (u8 o = 5; o < 8; o++) {
@@ -353,13 +354,6 @@ void generate_mesh(Chunk **chunks) {
 					chunk->mesh = (Vertex *)malloc((CHUNK_WIDTH + 2) * (CHUNK_HEIGHT + 2) * (CHUNK_DEPTH + 2) * sizeof(Vertex) * 36);
 				}
 
-				if (c_x + 1 <= NUM_X_CHUNKS) {
-					Chunk *x_chunk = chunks[COMPRESS_TWO(c_x + 1, c_z, NUM_X_CHUNKS + 2)];
-					if (x_chunk != NULL) {
-					}
-				}
-
-
 				for (u32 x = 1; x <= CHUNK_WIDTH; ++x) {
 					for (u32 y = 1; y <= CHUNK_HEIGHT; ++y) {
 						for (u32 z = 1; z <= CHUNK_DEPTH; ++z) {
@@ -397,7 +391,6 @@ void generate_mesh(Chunk **chunks) {
 			}
 		}
 	}
-
 }
 
 int main() {
