@@ -13,9 +13,12 @@
 #include "common.h"
 #include "gl_helper.h"
 
-#define CHUNK_WIDTH 128
+#define CHUNK_WIDTH 16
 #define CHUNK_HEIGHT 128
-#define CHUNK_DEPTH 128
+#define CHUNK_DEPTH 16
+
+#define NUM_X_CHUNKS 2
+#define NUM_Z_CHUNKS 2
 
 glm::vec3 cube_edges[] = {
 	glm::vec3(-0.0f, -0.0f,  1.0f),
@@ -28,8 +31,6 @@ glm::vec3 cube_edges[] = {
 	glm::vec3( 1.0f,  1.0f, -0.0f),
 };
 
-u32 mesh_size = 0;
-
 typedef struct Vertex {
 	glm::vec3 point;
 	u8 t_point;
@@ -37,13 +38,23 @@ typedef struct Vertex {
 	f32 ao;
 } Vertex;
 
-Vertex new_vert(glm::vec3 edge, glm::vec3 offset, u8 tex_id, u8 t_point, f32 ao, bool flipped) {
+typedef struct Chunk {
+	u8 blocks[CHUNK_WIDTH + 2][CHUNK_HEIGHT + 2][CHUNK_DEPTH + 2];
+
+	Vertex *mesh;
+	u32 mesh_size;
+
+	u64 x_off;
+	u64 z_off;
+} Chunk;
+
+
+Vertex new_vert(glm::vec3 edge, glm::vec3 offset, u8 tex_id, u8 t_point, f32 ao) {
 	Vertex v;
 	v.point = edge + offset;
-	v.t_point = t_point << 1 | !!flipped;
+	v.t_point = t_point;
 	v.tex_id = tex_id;
 	v.ao = ao;
-
 	return v;
 }
 
@@ -60,49 +71,52 @@ enum {
 	SIDE_BR_DIAG  = 0b1000000000,
 };
 
-u16 get_air_neighbors(u8 *chunk, u32 x, u32 y, u32 z) {
+u16 get_air_neighbors(Chunk *chunk, u32 x, u32 y, u32 z) {
 	u16 neighbors = 0;
     if (x == 0 || y == 0 || z == 0 || x > CHUNK_WIDTH || y > CHUNK_HEIGHT || z > CHUNK_DEPTH) {
 		return neighbors;
 	}
 
-	if (chunk[COMPRESS_THREE(x - 1, y, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
+	if (chunk->blocks[x - 1][y][z] == 0) {
 		neighbors |= SIDE_LEFT;
 	}
-	if (chunk[COMPRESS_THREE(x + 1, y, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
+	if (chunk->blocks[x + 1][y][z] == 0) {
 		neighbors |= SIDE_RIGHT;
 	}
-	if (chunk[COMPRESS_THREE(x, y + 1, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
+	if (chunk->blocks[x][y + 1][z] == 0) {
 		neighbors |= SIDE_TOP;
 	}
-	if (chunk[COMPRESS_THREE(x, y - 1, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
+	if (chunk->blocks[x][y - 1][z] == 0) {
 		neighbors |= SIDE_BOTTOM;
 	}
-	if (chunk[COMPRESS_THREE(x, y, z + 1, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
+	if (chunk->blocks[x][y][z + 1] == 0) {
 		neighbors |= SIDE_FRONT;
 	}
-	if (chunk[COMPRESS_THREE(x, y, z - 1, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
+	if (chunk->blocks[x][y][z - 1] == 0) {
 		neighbors |= SIDE_BACK;
 	}
 
-	if (chunk[COMPRESS_THREE(x - 1, y, z - 1, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
+	if (chunk->blocks[x - 1][y][z - 1] == 0) {
 		neighbors |= SIDE_BL_DIAG;
 	}
-	if (chunk[COMPRESS_THREE(x + 1, y, z - 1, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
+	if (chunk->blocks[x + 1][y][z - 1] == 0) {
 		neighbors |= SIDE_BR_DIAG;
 	}
-	if (chunk[COMPRESS_THREE(x - 1, y, z + 1, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
+	if (chunk->blocks[x - 1][y][z + 1] == 0) {
 		neighbors |= SIDE_TL_DIAG;
 	}
-	if (chunk[COMPRESS_THREE(x + 1, y, z + 1, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] == 0) {
+	if (chunk->blocks[x + 1][y][z + 1] == 0) {
 		neighbors |= SIDE_TR_DIAG;
 	}
 
 	return neighbors;
 }
 
-void add_face(Vertex *mesh, u32 *mesh_size, u16 side, u32 x, u32 y, u32 z, u8 tex_id, u16 neighbors) {
-	glm::vec3 offset = glm::vec3(x, y, z);
+void add_face(Chunk *chunk, u16 side, u32 x, u32 y, u32 z, u16 neighbors) {
+	glm::vec3 offset = glm::vec3(x + (chunk->x_off), y, z + (chunk->z_off));
+	u8 tex_id = chunk->blocks[x][y][z];
+
+	u64 mesh_size = chunk->mesh_size;
 
 	u16 g_ao = ~neighbors;
 	f32 ao = 1.0;
@@ -144,19 +158,19 @@ void add_face(Vertex *mesh, u32 *mesh_size, u16 side, u32 x, u32 y, u32 z, u8 te
 			}
 
 			if (tr + bl > br + tl) {
-				mesh[*mesh_size    ] = new_vert(cube_edges[2], offset, tex_id, 0, tl, true);
-				mesh[*mesh_size + 1] = new_vert(cube_edges[3], offset, tex_id, 1, tr, true);
-				mesh[*mesh_size + 2] = new_vert(cube_edges[6], offset, tex_id, 3, bl, true);
-				mesh[*mesh_size + 3] = new_vert(cube_edges[3], offset, tex_id, 0, tr, true);
-				mesh[*mesh_size + 4] = new_vert(cube_edges[7], offset, tex_id, 3, br, true);
-				mesh[*mesh_size + 5] = new_vert(cube_edges[6], offset, tex_id, 2, bl, true);
+				chunk->mesh[mesh_size    ] = new_vert(cube_edges[2], offset, tex_id, 0, tl);
+				chunk->mesh[mesh_size + 1] = new_vert(cube_edges[3], offset, tex_id, 1, tr);
+				chunk->mesh[mesh_size + 2] = new_vert(cube_edges[6], offset, tex_id, 2, bl);
+				chunk->mesh[mesh_size + 3] = new_vert(cube_edges[3], offset, tex_id, 1, tr);
+				chunk->mesh[mesh_size + 4] = new_vert(cube_edges[7], offset, tex_id, 3, br);
+				chunk->mesh[mesh_size + 5] = new_vert(cube_edges[6], offset, tex_id, 2, bl);
 			} else {
-				mesh[*mesh_size    ] = new_vert(cube_edges[2], offset, tex_id, 0, tl, false);
-				mesh[*mesh_size + 1] = new_vert(cube_edges[3], offset, tex_id, 1, tr, false);
-				mesh[*mesh_size + 2] = new_vert(cube_edges[7], offset, tex_id, 3, br, false);
-				mesh[*mesh_size + 3] = new_vert(cube_edges[2], offset, tex_id, 0, tl, false);
-				mesh[*mesh_size + 4] = new_vert(cube_edges[7], offset, tex_id, 3, br, false);
-				mesh[*mesh_size + 5] = new_vert(cube_edges[6], offset, tex_id, 2, bl, false);
+				chunk->mesh[mesh_size    ] = new_vert(cube_edges[2], offset, tex_id, 0, tl);
+				chunk->mesh[mesh_size + 1] = new_vert(cube_edges[3], offset, tex_id, 1, tr);
+				chunk->mesh[mesh_size + 2] = new_vert(cube_edges[7], offset, tex_id, 3, br);
+				chunk->mesh[mesh_size + 3] = new_vert(cube_edges[2], offset, tex_id, 0, tl);
+				chunk->mesh[mesh_size + 4] = new_vert(cube_edges[7], offset, tex_id, 3, br);
+				chunk->mesh[mesh_size + 5] = new_vert(cube_edges[6], offset, tex_id, 2, bl);
 			}
 
 		} break;
@@ -177,12 +191,12 @@ void add_face(Vertex *mesh, u32 *mesh_size, u16 side, u32 x, u32 y, u32 z, u8 te
 				br -= 0.2f;
 				tr -= 0.2f;
 			}
-			mesh[*mesh_size    ] = new_vert(cube_edges[4], offset, tex_id, 0, tl, false);
-			mesh[*mesh_size + 1] = new_vert(cube_edges[5], offset, tex_id, 1, tr, false);
-			mesh[*mesh_size + 2] = new_vert(cube_edges[1], offset, tex_id, 3, br, false);
-			mesh[*mesh_size + 3] = new_vert(cube_edges[4], offset, tex_id, 0, tl, false);
-			mesh[*mesh_size + 4] = new_vert(cube_edges[1], offset, tex_id, 3, br, false);
-			mesh[*mesh_size + 5] = new_vert(cube_edges[0], offset, tex_id, 2, bl, false);
+			chunk->mesh[mesh_size    ] = new_vert(cube_edges[4], offset, tex_id, 0, tl);
+			chunk->mesh[mesh_size + 1] = new_vert(cube_edges[5], offset, tex_id, 1, tr);
+			chunk->mesh[mesh_size + 2] = new_vert(cube_edges[1], offset, tex_id, 3, br);
+			chunk->mesh[mesh_size + 3] = new_vert(cube_edges[4], offset, tex_id, 0, tl);
+			chunk->mesh[mesh_size + 4] = new_vert(cube_edges[1], offset, tex_id, 3, br);
+			chunk->mesh[mesh_size + 5] = new_vert(cube_edges[0], offset, tex_id, 2, bl);
 		} break;
 		case SIDE_LEFT: {
 			if (g_ao & SIDE_BOTTOM) {
@@ -202,12 +216,12 @@ void add_face(Vertex *mesh, u32 *mesh_size, u16 side, u32 x, u32 y, u32 z, u8 te
 				tr -= 0.2f;
 			}
 
-			mesh[*mesh_size    ] = new_vert(cube_edges[4], offset, tex_id, 0, tl, false);
-			mesh[*mesh_size + 1] = new_vert(cube_edges[0], offset, tex_id, 1, tr, false);
-			mesh[*mesh_size + 2] = new_vert(cube_edges[2], offset, tex_id, 3, br, false);
-			mesh[*mesh_size + 3] = new_vert(cube_edges[4], offset, tex_id, 0, tl, false);
-			mesh[*mesh_size + 4] = new_vert(cube_edges[2], offset, tex_id, 3, br, false);
-			mesh[*mesh_size + 5] = new_vert(cube_edges[6], offset, tex_id, 2, bl, false);
+			chunk->mesh[mesh_size    ] = new_vert(cube_edges[4], offset, tex_id, 0, tl);
+			chunk->mesh[mesh_size + 1] = new_vert(cube_edges[0], offset, tex_id, 1, tr);
+			chunk->mesh[mesh_size + 2] = new_vert(cube_edges[2], offset, tex_id, 3, br);
+			chunk->mesh[mesh_size + 3] = new_vert(cube_edges[4], offset, tex_id, 0, tl);
+			chunk->mesh[mesh_size + 4] = new_vert(cube_edges[2], offset, tex_id, 3, br);
+			chunk->mesh[mesh_size + 5] = new_vert(cube_edges[6], offset, tex_id, 2, bl);
 		} break;
 		case SIDE_RIGHT: {
 			if (g_ao & SIDE_BOTTOM) {
@@ -226,12 +240,12 @@ void add_face(Vertex *mesh, u32 *mesh_size, u16 side, u32 x, u32 y, u32 z, u8 te
 				br -= 0.2f;
 				tr -= 0.2f;
 			}
-			mesh[*mesh_size    ] = new_vert(cube_edges[1], offset, tex_id, 0, tl, false);
-			mesh[*mesh_size + 1] = new_vert(cube_edges[5], offset, tex_id, 1, tr, false);
-			mesh[*mesh_size + 2] = new_vert(cube_edges[7], offset, tex_id, 3, br, false);
-			mesh[*mesh_size + 3] = new_vert(cube_edges[1], offset, tex_id, 0, tl, false);
-			mesh[*mesh_size + 4] = new_vert(cube_edges[7], offset, tex_id, 3, br, false);
-			mesh[*mesh_size + 5] = new_vert(cube_edges[3], offset, tex_id, 2, bl, false);
+			chunk->mesh[mesh_size    ] = new_vert(cube_edges[1], offset, tex_id, 0, tl);
+			chunk->mesh[mesh_size + 1] = new_vert(cube_edges[5], offset, tex_id, 1, tr);
+			chunk->mesh[mesh_size + 2] = new_vert(cube_edges[7], offset, tex_id, 3, br);
+			chunk->mesh[mesh_size + 3] = new_vert(cube_edges[1], offset, tex_id, 0, tl);
+			chunk->mesh[mesh_size + 4] = new_vert(cube_edges[7], offset, tex_id, 3, br);
+			chunk->mesh[mesh_size + 5] = new_vert(cube_edges[3], offset, tex_id, 2, bl);
 		} break;
 		case SIDE_FRONT: {
 			if (g_ao & SIDE_BOTTOM) {
@@ -250,12 +264,12 @@ void add_face(Vertex *mesh, u32 *mesh_size, u16 side, u32 x, u32 y, u32 z, u8 te
 				br -= 0.2f;
 				tr -= 0.2f;
 			}
-			mesh[*mesh_size    ] = new_vert(cube_edges[0], offset, tex_id, 0, tl, false);
-			mesh[*mesh_size + 1] = new_vert(cube_edges[1], offset, tex_id, 1, tr, false);
-			mesh[*mesh_size + 2] = new_vert(cube_edges[3], offset, tex_id, 3, br, false);
-			mesh[*mesh_size + 3] = new_vert(cube_edges[0], offset, tex_id, 0, tl, false);
-			mesh[*mesh_size + 4] = new_vert(cube_edges[3], offset, tex_id, 3, br, false);
-			mesh[*mesh_size + 5] = new_vert(cube_edges[2], offset, tex_id, 2, bl, false);
+			chunk->mesh[mesh_size    ] = new_vert(cube_edges[0], offset, tex_id, 0, tl);
+			chunk->mesh[mesh_size + 1] = new_vert(cube_edges[1], offset, tex_id, 1, tr);
+			chunk->mesh[mesh_size + 2] = new_vert(cube_edges[3], offset, tex_id, 3, br);
+			chunk->mesh[mesh_size + 3] = new_vert(cube_edges[0], offset, tex_id, 0, tl);
+			chunk->mesh[mesh_size + 4] = new_vert(cube_edges[3], offset, tex_id, 3, br);
+			chunk->mesh[mesh_size + 5] = new_vert(cube_edges[2], offset, tex_id, 2, bl);
 		} break;
 		case SIDE_BACK: {
 			if (g_ao & SIDE_BOTTOM) {
@@ -274,32 +288,37 @@ void add_face(Vertex *mesh, u32 *mesh_size, u16 side, u32 x, u32 y, u32 z, u8 te
 				br -= 0.2f;
 				tr -= 0.2f;
 			}
-			mesh[*mesh_size    ] = new_vert(cube_edges[5], offset, tex_id, 0, tl, false);
-			mesh[*mesh_size + 1] = new_vert(cube_edges[4], offset, tex_id, 1, tr, false);
-			mesh[*mesh_size + 2] = new_vert(cube_edges[6], offset, tex_id, 3, br, false);
-			mesh[*mesh_size + 3] = new_vert(cube_edges[5], offset, tex_id, 0, tl, false);
-			mesh[*mesh_size + 4] = new_vert(cube_edges[6], offset, tex_id, 3, br, false);
-			mesh[*mesh_size + 5] = new_vert(cube_edges[7], offset, tex_id, 2, bl, false);
+			chunk->mesh[mesh_size    ] = new_vert(cube_edges[5], offset, tex_id, 0, tl);
+			chunk->mesh[mesh_size + 1] = new_vert(cube_edges[4], offset, tex_id, 1, tr);
+			chunk->mesh[mesh_size + 2] = new_vert(cube_edges[6], offset, tex_id, 3, br);
+			chunk->mesh[mesh_size + 3] = new_vert(cube_edges[5], offset, tex_id, 0, tl);
+			chunk->mesh[mesh_size + 4] = new_vert(cube_edges[6], offset, tex_id, 3, br);
+			chunk->mesh[mesh_size + 5] = new_vert(cube_edges[7], offset, tex_id, 2, bl);
 		} break;
 	}
 
-	*mesh_size += 6;
+	chunk->mesh_size += 6;
 }
 
-u8 *generate_chunk(u32 x_off, u32 z_off) {
-	u8 *chunk = (u8 *)malloc((CHUNK_WIDTH + 2) * (CHUNK_HEIGHT + 2) * (CHUNK_DEPTH + 2));
-	memset(chunk, 0, (CHUNK_WIDTH + 2) * (CHUNK_HEIGHT + 2) * (CHUNK_DEPTH + 2));
+Chunk *generate_chunk(u32 x_off, u32 z_off) {
+	Chunk *chunk = (Chunk *)malloc(sizeof(Chunk));
+	memset(chunk->blocks, 0, sizeof(chunk->blocks));
+
+	chunk->x_off = x_off * (CHUNK_WIDTH);
+	chunk->z_off = z_off * (CHUNK_DEPTH);
+	chunk->mesh_size = 0;
+	chunk->mesh = NULL;
 
 	f32 min_height = CHUNK_HEIGHT / 6;
 	f32 avg_height = CHUNK_HEIGHT / 3;
 
-	for (u32 x = 1; x < CHUNK_WIDTH; ++x) {
-		for (u32 z = 1; z < CHUNK_DEPTH; ++z) {
+	for (u32 x = 1; x <= CHUNK_WIDTH; ++x) {
+		for (u32 z = 1; z <= CHUNK_DEPTH; ++z) {
 
 			f32 column_height = avg_height;
 			for (u8 o = 5; o < 8; o++) {
 				f32 scale = (f32)(2 << o) * 1.01f;
-				column_height += (f32)(o << 4) * stb_perlin_noise3((f32)(x + x_off) / scale, (f32)(z + z_off) / scale, o * 2.0f, 256, 256, 256);
+				column_height += (f32)(o << 3) * stb_perlin_noise3((f32)(x + chunk->x_off) / scale, (f32)(z + chunk->z_off) / scale, o * 2.0f, 256, 256, 256);
 			}
 
 			if (column_height > CHUNK_HEIGHT) {
@@ -311,12 +330,12 @@ u8 *generate_chunk(u32 x_off, u32 z_off) {
 			}
 
 			for (u32 h = min_height - 1; h < column_height; h++) {
-				if (h  > ((f32)CHUNK_HEIGHT * (0.66f))) {
-					chunk[COMPRESS_THREE(x, h, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] = 3;
-				} else if (h  > avg_height) {
-					chunk[COMPRESS_THREE(x, h, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] = 1;
+				if ((h % 2) == 0) {
+					chunk->blocks[x][h][z] = 1;
+				} else if ((h % 3) == 0) {
+					chunk->blocks[x][h][z] = 2;
 				} else {
-					chunk[COMPRESS_THREE(x, h, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2)] = 2;
+					chunk->blocks[x][h][z] = 3;
 				}
 			}
 		}
@@ -325,47 +344,60 @@ u8 *generate_chunk(u32 x_off, u32 z_off) {
 	return chunk;
 }
 
-Vertex *generate_mesh(u8 *chunk) {
-	Vertex *mesh = (Vertex *)malloc((CHUNK_WIDTH + 2) * (CHUNK_HEIGHT + 2) * (CHUNK_DEPTH + 2) * sizeof(Vertex) * 36);
-	memset(mesh, 0, (CHUNK_WIDTH + 2) * (CHUNK_HEIGHT + 2) * (CHUNK_DEPTH + 2) * 36);
+void generate_mesh(Chunk **chunks) {
+	for (u32 c_x = 1; c_x <= NUM_X_CHUNKS; ++c_x) {
+		for (u32 c_z = 1; c_z <= NUM_Z_CHUNKS; ++c_z) {
+			Chunk *chunk = chunks[COMPRESS_TWO(c_x, c_z, NUM_X_CHUNKS + 2)];
+			if (chunk != NULL) {
+				if (chunk->mesh == NULL) {
+					chunk->mesh = (Vertex *)malloc((CHUNK_WIDTH + 2) * (CHUNK_HEIGHT + 2) * (CHUNK_DEPTH + 2) * sizeof(Vertex) * 36);
+				}
 
-	for (u32 x = 1; x < CHUNK_WIDTH; ++x) {
-		for (u32 y = 1; y < CHUNK_HEIGHT; ++y) {
-			for (u32 z = 1; z < CHUNK_DEPTH; ++z) {
-				u64 id = COMPRESS_THREE(x, y, z, CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2);
-				if (chunk[id] != 0) {
-					u16 air_neighbors = get_air_neighbors(chunk, x, y, z);
+				if (c_x + 1 <= NUM_X_CHUNKS) {
+					Chunk *x_chunk = chunks[COMPRESS_TWO(c_x + 1, c_z, NUM_X_CHUNKS + 2)];
+					if (x_chunk != NULL) {
+					}
+				}
 
-					if (air_neighbors & SIDE_TOP) {
-						u16 ao_neighbors = get_air_neighbors(chunk, x, y + 1, z);
-						add_face(mesh, &mesh_size, SIDE_TOP, x, y, z, chunk[id], ao_neighbors);
-					}
-					if (air_neighbors & SIDE_BOTTOM) {
-						u16 ao_neighbors = get_air_neighbors(chunk, x, y - 1, z);
-						add_face(mesh, &mesh_size, SIDE_BOTTOM, x, y, z, chunk[id], ao_neighbors);
-					}
-					if (air_neighbors & SIDE_LEFT) {
-						u16 ao_neighbors = get_air_neighbors(chunk, x - 1, y, z);
-						add_face(mesh, &mesh_size, SIDE_LEFT, x, y, z, chunk[id], ao_neighbors);
-					}
-					if (air_neighbors & SIDE_RIGHT) {
-						u16 ao_neighbors = get_air_neighbors(chunk, x + 1, y, z);
-						add_face(mesh, &mesh_size, SIDE_RIGHT, x, y, z, chunk[id], ao_neighbors);
-					}
-					if (air_neighbors & SIDE_FRONT) {
-						u16 ao_neighbors = get_air_neighbors(chunk, x, y, z + 1);
-						add_face(mesh, &mesh_size, SIDE_FRONT, x, y, z, chunk[id], ao_neighbors);
-					}
-					if (air_neighbors & SIDE_BACK) {
-						u16 ao_neighbors = get_air_neighbors(chunk, x, y, z - 1);
-						add_face(mesh, &mesh_size, SIDE_BACK, x, y, z, chunk[id], ao_neighbors);
+
+				for (u32 x = 1; x <= CHUNK_WIDTH; ++x) {
+					for (u32 y = 1; y <= CHUNK_HEIGHT; ++y) {
+						for (u32 z = 1; z <= CHUNK_DEPTH; ++z) {
+							if (chunk->blocks[x][y][z] != 0) {
+								u16 air_neighbors = get_air_neighbors(chunk, x, y, z);
+
+								if (air_neighbors & SIDE_TOP) {
+									u16 ao_neighbors = get_air_neighbors(chunk, x, y + 1, z);
+									add_face(chunk, SIDE_TOP, x, y, z, ao_neighbors);
+								}
+								if (air_neighbors & SIDE_BOTTOM) {
+									u16 ao_neighbors = get_air_neighbors(chunk, x, y - 1, z);
+									add_face(chunk, SIDE_BOTTOM, x, y, z, ao_neighbors);
+								}
+								if (air_neighbors & SIDE_LEFT) {
+									u16 ao_neighbors = get_air_neighbors(chunk, x - 1, y, z);
+									add_face(chunk, SIDE_LEFT, x, y, z, ao_neighbors);
+								}
+								if (air_neighbors & SIDE_RIGHT) {
+									u16 ao_neighbors = get_air_neighbors(chunk, x + 1, y, z);
+									add_face(chunk, SIDE_RIGHT, x, y, z, ao_neighbors);
+								}
+								if (air_neighbors & SIDE_FRONT) {
+									u16 ao_neighbors = get_air_neighbors(chunk, x, y, z + 1);
+									add_face(chunk, SIDE_FRONT, x, y, z, ao_neighbors);
+								}
+								if (air_neighbors & SIDE_BACK) {
+									u16 ao_neighbors = get_air_neighbors(chunk, x, y, z - 1);
+									add_face(chunk, SIDE_BACK, x, y, z, ao_neighbors);
+								}
+							}
+						}
 					}
 				}
 			}
 		}
 	}
 
-	return mesh;
 }
 
 int main() {
@@ -419,12 +451,23 @@ int main() {
 	glFrontFace(GL_CW);
 	//glClearColor(0.2, 0.8, 1.0, 1.0);
 
-
-    u8 *chunk = generate_chunk(0, 0);
-	Vertex *mesh = generate_mesh(chunk);
+	Chunk **chunks = (Chunk **)malloc(sizeof(Chunk *) * (NUM_X_CHUNKS + 2) * (NUM_Z_CHUNKS + 2));
+	for (u32 x = 1; x <= NUM_X_CHUNKS; x++) {
+		for (u32 z = 1; z <= NUM_Z_CHUNKS; z++) {
+			Chunk *chunk = generate_chunk(x - 1, z - 1);
+    		chunks[COMPRESS_TWO(x, z, NUM_X_CHUNKS + 2)] = chunk;
+		}
+	}
+	for (u32 x = 0; x <= NUM_X_CHUNKS; x++) {
+		for (u32 z = 0; z <= NUM_Z_CHUNKS; z++) {
+			if (x == 0 || z == 0) {
+				chunks[COMPRESS_TWO(x, z, NUM_X_CHUNKS + 2)] = NULL;
+			}
+		}
+	}
+	generate_mesh(chunks);
 
 	glBindBuffer(GL_ARRAY_BUFFER, v_mesh);
-	glBufferData(GL_ARRAY_BUFFER, mesh_size * sizeof(Vertex), mesh, GL_STATIC_DRAW);
 
 	f32 current_time = (f32)SDL_GetTicks() / 60.0;
 	f32 t = 0.0;
@@ -530,6 +573,7 @@ int main() {
 		glVertexAttribIPointer(a_tex_idx, 1, GL_UNSIGNED_BYTE, sizeof(Vertex), (void *)STRUCT_OFFSET(Vertex, tex_id));
 		glVertexAttribPointer(a_ao, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *)STRUCT_OFFSET(Vertex, ao));
 
+
 		glBindTexture(GL_TEXTURE_2D, atlas_tex);
 		glActiveTexture(GL_TEXTURE0);
 
@@ -544,7 +588,13 @@ int main() {
 		glUniformMatrix4fv(u_pv, 1, GL_FALSE, &pv[0][0]);
 		glUniformMatrix4fv(u_model, 1, GL_FALSE, &model[0][0]);
 
-		glDrawArrays(GL_TRIANGLES, 0, mesh_size * sizeof(Vertex));
+		for (u32 x = 1; x <= NUM_X_CHUNKS; ++x) {
+			for (u32 z = 1; z <= NUM_Z_CHUNKS; ++z) {
+				glBindBuffer(GL_ARRAY_BUFFER, v_mesh);
+				glBufferData(GL_ARRAY_BUFFER, chunks[COMPRESS_TWO(x, z, NUM_X_CHUNKS + 2)]->mesh_size * sizeof(Vertex), chunks[COMPRESS_TWO(x, z, NUM_X_CHUNKS + 2)]->mesh, GL_STREAM_DRAW);
+				glDrawArrays(GL_TRIANGLES, 0, chunks[COMPRESS_TWO(x, z, NUM_X_CHUNKS + 2)]->mesh_size * sizeof(Vertex));
+			}
+		}
 
 		SDL_GL_SwapWindow(window);
 	}

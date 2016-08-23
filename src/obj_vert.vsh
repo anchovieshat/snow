@@ -21,39 +21,21 @@ void main() {
 	float y = ((tex_idx - 1u) % 2u) * scalar;
 	float x = ((tex_idx - 1u) / 2u) * scalar;
 
-	uint v_tex_side = tex_side >> 1;
-	uint flipped = (tex_side << 31) >> 31;
+	uint v_tex_side = tex_side;
 
-	if (!bool(flipped)) {
-		switch (v_tex_side) {
-			case 0: {
-				f_tex_point = vec2(x, y);
-			} break;
-			case 1: {
-				f_tex_point = vec2(x + scalar, y);
-			} break;
-			case 2: {
-				f_tex_point = vec2(x, y + scalar);
-			} break;
-			case 3: {
-				f_tex_point = vec2(x + scalar, y + scalar);
-			} break;
-		}
-	} else {
-		switch (v_tex_side) {
-			case 0: {
-				f_tex_point = vec2(x + scalar, y);
-			} break;
-			case 1: {
-				f_tex_point = vec2(x, y);
-			} break;
-			case 2: {
-				f_tex_point = vec2(x, y + scalar);
-			} break;
-			case 3: {
-				f_tex_point = vec2(x + scalar, y + scalar);
-			} break;
-		}
+	switch (v_tex_side) {
+		case 0: {
+			f_tex_point = vec2(x, y);
+		} break;
+		case 1: {
+			f_tex_point = vec2(x + scalar, y);
+		} break;
+		case 2: {
+			f_tex_point = vec2(x, y + scalar);
+		} break;
+		case 3: {
+			f_tex_point = vec2(x + scalar, y + scalar);
+		} break;
 	}
 
 	f_ao = ao;
