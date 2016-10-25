@@ -416,6 +416,7 @@ int main() {
 
 	GLuint v_mesh;
 	glGenBuffers(1, &v_mesh);
+	glBindBuffer(GL_ARRAY_BUFFER, v_mesh);
 
 	GLuint atlas_tex;
 	SDL_Surface *atlas_surf = IMG_Load("assets/atlas.png");
@@ -428,6 +429,8 @@ int main() {
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, atlas_surf->w, atlas_surf->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, atlas_surf->pixels);
 	free(atlas_surf);
 
+	glActiveTexture(GL_TEXTURE0);
+
 	GLuint a_points = glGetAttribLocation(obj_shader, "points");
 	GLuint a_tex_side = glGetAttribLocation(obj_shader, "tex_side");
 	GLuint a_tex_idx = glGetAttribLocation(obj_shader, "tex_idx");
@@ -436,6 +439,16 @@ int main() {
 	GLuint u_model = glGetUniformLocation(obj_shader, "model");
 	GLuint u_pv = glGetUniformLocation(obj_shader, "pv");
 	GLuint u_tex = glGetUniformLocation(obj_shader, "tex");
+
+	glEnableVertexAttribArray(a_points);
+	glEnableVertexAttribArray(a_tex_side);
+	glEnableVertexAttribArray(a_tex_idx);
+	glEnableVertexAttribArray(a_ao);
+
+	glVertexAttribPointer(a_points, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
+	glVertexAttribIPointer(a_tex_side, 1, GL_UNSIGNED_BYTE, sizeof(Vertex), (void *)STRUCT_OFFSET(Vertex, t_point));
+	glVertexAttribIPointer(a_tex_idx, 1, GL_UNSIGNED_BYTE, sizeof(Vertex), (void *)STRUCT_OFFSET(Vertex, tex_id));
+	glVertexAttribPointer(a_ao, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *)STRUCT_OFFSET(Vertex, ao));
 
 	glViewport(0, 0, screen_width, screen_height);
     glEnable(GL_DEPTH_TEST);
@@ -459,8 +472,6 @@ int main() {
 		}
 	}
 	generate_mesh(chunks);
-
-	glBindBuffer(GL_ARRAY_BUFFER, v_mesh);
 
 	f32 current_time = (f32)SDL_GetTicks() / 60.0;
 	f32 t = 0.0;
@@ -555,20 +566,7 @@ int main() {
 		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 		glUseProgram(obj_shader);
 
-		glEnableVertexAttribArray(a_points);
-		glEnableVertexAttribArray(a_tex_side);
-		glEnableVertexAttribArray(a_tex_idx);
-		glEnableVertexAttribArray(a_ao);
-
-		glBindBuffer(GL_ARRAY_BUFFER, v_mesh);
-		glVertexAttribPointer(a_points, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
-		glVertexAttribIPointer(a_tex_side, 1, GL_UNSIGNED_BYTE, sizeof(Vertex), (void *)STRUCT_OFFSET(Vertex, t_point));
-		glVertexAttribIPointer(a_tex_idx, 1, GL_UNSIGNED_BYTE, sizeof(Vertex), (void *)STRUCT_OFFSET(Vertex, tex_id));
-		glVertexAttribPointer(a_ao, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *)STRUCT_OFFSET(Vertex, ao));
-
-
-		glBindTexture(GL_TEXTURE_2D, atlas_tex);
-		glActiveTexture(GL_TEXTURE0);
+		glBindVertexArray(vao);
 
 		f32 s_ratio = (f32)screen_width / (f32)screen_height;
 		glm::mat4 projection = glm::perspective(glm::radians(45.0f), s_ratio, 1.0f, 500.0f);
@@ -583,12 +581,10 @@ int main() {
 
 		for (u32 x = 1; x <= NUM_X_CHUNKS; ++x) {
 			for (u32 z = 1; z <= NUM_Z_CHUNKS; ++z) {
-				glBindBuffer(GL_ARRAY_BUFFER, v_mesh);
 				glBufferData(GL_ARRAY_BUFFER, chunks[COMPRESS_TWO(x, z, NUM_X_CHUNKS + 2)]->mesh_size * sizeof(Vertex), chunks[COMPRESS_TWO(x, z, NUM_X_CHUNKS + 2)]->mesh, GL_STREAM_DRAW);
 				glDrawArrays(GL_TRIANGLES, 0, chunks[COMPRESS_TWO(x, z, NUM_X_CHUNKS + 2)]->mesh_size * sizeof(Vertex));
 			}
 		}
-
 		SDL_GL_SwapWindow(window);
 	}
 
