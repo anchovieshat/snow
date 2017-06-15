@@ -4,9 +4,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include <stdio.h>
-#include <stdlib.h>
-
 #define STB_PERLIN_IMPLEMENTATION
 #include "stb_perlin.h"
 
@@ -47,7 +44,6 @@ typedef struct Chunk {
 	u64 x_off;
 	u64 z_off;
 } Chunk;
-
 
 Vertex new_vert(glm::vec3 edge, glm::vec3 offset, u8 tex_id, u8 t_point, f32 ao) {
 	Vertex v;
@@ -192,6 +188,7 @@ void add_face(Chunk *chunk, u16 side, u32 x, u32 y, u32 z, u16 neighbors) {
 				br -= 0.2f;
 				tr -= 0.2f;
 			}
+
 			chunk->mesh[mesh_size    ] = new_vert(cube_edges[4], offset, tex_id, 0, tl);
 			chunk->mesh[mesh_size + 1] = new_vert(cube_edges[5], offset, tex_id, 1, tr);
 			chunk->mesh[mesh_size + 2] = new_vert(cube_edges[1], offset, tex_id, 3, br);
@@ -345,7 +342,9 @@ Chunk *generate_chunk(u32 x_off, u32 z_off) {
 	return chunk;
 }
 
-void generate_mesh(Chunk **chunks) {
+u64 generate_mesh(Chunk **chunks) {
+	u64 total_mesh_size = 0;
+	u64 face = 0;
 	for (u32 c_x = 1; c_x <= NUM_X_CHUNKS; ++c_x) {
 		for (u32 c_z = 1; c_z <= NUM_Z_CHUNKS; ++c_z) {
 			Chunk *chunk = chunks[COMPRESS_TWO(c_x, c_z, NUM_X_CHUNKS + 2)];
@@ -363,6 +362,7 @@ void generate_mesh(Chunk **chunks) {
 								if (air_neighbors & SIDE_TOP) {
 									u16 ao_neighbors = get_air_neighbors(chunk, x, y + 1, z);
 									add_face(chunk, SIDE_TOP, x, y, z, ao_neighbors);
+									face += 1;
 								}
 								if (air_neighbors & SIDE_BOTTOM) {
 									u16 ao_neighbors = get_air_neighbors(chunk, x, y - 1, z);
@@ -371,26 +371,34 @@ void generate_mesh(Chunk **chunks) {
 								if (air_neighbors & SIDE_LEFT) {
 									u16 ao_neighbors = get_air_neighbors(chunk, x - 1, y, z);
 									add_face(chunk, SIDE_LEFT, x, y, z, ao_neighbors);
+									face += 1;
 								}
 								if (air_neighbors & SIDE_RIGHT) {
 									u16 ao_neighbors = get_air_neighbors(chunk, x + 1, y, z);
 									add_face(chunk, SIDE_RIGHT, x, y, z, ao_neighbors);
+									face += 1;
 								}
 								if (air_neighbors & SIDE_FRONT) {
 									u16 ao_neighbors = get_air_neighbors(chunk, x, y, z + 1);
 									add_face(chunk, SIDE_FRONT, x, y, z, ao_neighbors);
+									face += 1;
 								}
 								if (air_neighbors & SIDE_BACK) {
 									u16 ao_neighbors = get_air_neighbors(chunk, x, y, z - 1);
 									add_face(chunk, SIDE_BACK, x, y, z, ao_neighbors);
+									face += 1;
 								}
 							}
 						}
 					}
 				}
 			}
+			total_mesh_size += chunk->mesh_size;
 		}
 	}
+
+	printf("faces: %llu\n", face);
+	return total_mesh_size;
 }
 
 int main() {
@@ -452,10 +460,10 @@ int main() {
 
 	glViewport(0, 0, screen_width, screen_height);
     glEnable(GL_DEPTH_TEST);
+
 	glEnable(GL_CULL_FACE);
 	glCullFace(GL_FRONT);
 	glFrontFace(GL_CW);
-	//glClearColor(0.2, 0.8, 1.0, 1.0);
 
 	Chunk **chunks = (Chunk **)malloc(sizeof(Chunk *) * (NUM_X_CHUNKS + 2) * (NUM_Z_CHUNKS + 2));
 	for (u32 x = 1; x <= NUM_X_CHUNKS; x++) {
@@ -471,7 +479,21 @@ int main() {
 			}
 		}
 	}
-	generate_mesh(chunks);
+
+	u64 total_mesh_size = generate_mesh(chunks);
+
+
+	glBufferData(GL_ARRAY_BUFFER, total_mesh_size * sizeof(Vertex), NULL, GL_STATIC_DRAW);
+	u64 mesh_indent = 0;
+	for (u32 x = 1; x <= NUM_X_CHUNKS; ++x) {
+		for (u32 z = 1; z <= NUM_Z_CHUNKS; ++z) {
+			Chunk *chunk = chunks[COMPRESS_TWO(x, z, NUM_X_CHUNKS + 2)];
+			u64 mesh_size = chunk->mesh_size;
+
+			glBufferSubData(GL_ARRAY_BUFFER, mesh_indent * sizeof(Vertex), mesh_size * sizeof(Vertex), chunk->mesh);
+			mesh_indent += mesh_size;
+		}
+	}
 
 	f32 current_time = (f32)SDL_GetTicks() / 60.0;
 	f32 t = 0.0;
@@ -579,12 +601,8 @@ int main() {
 		glUniformMatrix4fv(u_pv, 1, GL_FALSE, &pv[0][0]);
 		glUniformMatrix4fv(u_model, 1, GL_FALSE, &model[0][0]);
 
-		for (u32 x = 1; x <= NUM_X_CHUNKS; ++x) {
-			for (u32 z = 1; z <= NUM_Z_CHUNKS; ++z) {
-				glBufferData(GL_ARRAY_BUFFER, chunks[COMPRESS_TWO(x, z, NUM_X_CHUNKS + 2)]->mesh_size * sizeof(Vertex), chunks[COMPRESS_TWO(x, z, NUM_X_CHUNKS + 2)]->mesh, GL_STREAM_DRAW);
-				glDrawArrays(GL_TRIANGLES, 0, chunks[COMPRESS_TWO(x, z, NUM_X_CHUNKS + 2)]->mesh_size * sizeof(Vertex));
-			}
-		}
+		glDrawArrays(GL_TRIANGLES, 0, total_mesh_size * sizeof(Vertex));
+
 		SDL_GL_SwapWindow(window);
 	}
 
