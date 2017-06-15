@@ -32,7 +32,7 @@ typedef struct Vertex {
 	glm::vec3 point;
 	u8 t_point;
 	u8 tex_id;
-	f32 ao;
+	u8 ao;
 } Vertex;
 
 typedef struct Chunk {
@@ -45,7 +45,7 @@ typedef struct Chunk {
 	u64 z_off;
 } Chunk;
 
-Vertex new_vert(glm::vec3 edge, glm::vec3 offset, u8 tex_id, u8 t_point, f32 ao) {
+Vertex new_vert(glm::vec3 edge, glm::vec3 offset, u8 tex_id, u8 t_point, u8 ao) {
 	Vertex v;
 	v.point = edge + offset;
 	v.t_point = t_point;
@@ -116,42 +116,43 @@ void add_face(Chunk *chunk, u16 side, u32 x, u32 y, u32 z, u16 neighbors) {
 	u64 mesh_size = chunk->mesh_size;
 
 	u16 g_ao = ~neighbors;
-	f32 ao = 1.0;
-	f32 tl = ao;
-	f32 tr = ao;
-	f32 bl = ao;
-	f32 br = ao;
+	u8 ao = 255;
+	u8 tl = ao;
+	u8 tr = ao;
+	u8 bl = ao;
+	u8 br = ao;
+	u8 dark_val = 50;
 
 	switch (side) {
 		case SIDE_TOP: {
 			if (g_ao & SIDE_FRONT) {
-				tl -= 0.2f;
-				tr -= 0.2f;
+				tl -= dark_val;
+				tr -= dark_val;
 			}
 			if (g_ao & SIDE_BACK) {
-				bl -= 0.2f;
-				br -= 0.2f;
+				bl -= dark_val;
+				br -= dark_val;
 			}
 			if (g_ao & SIDE_LEFT) {
-				bl -= 0.2f;
-				tl -= 0.2f;
+				bl -= dark_val;
+				tl -= dark_val;
 			}
 			if (g_ao & SIDE_RIGHT) {
-				br -= 0.2f;
-				tr -= 0.2f;
+				br -= dark_val;
+				tr -= dark_val;
 			}
 
 			if (g_ao & SIDE_TR_DIAG) {
-				tr -= 0.2f;
+				tr -= dark_val;
 			}
 			if (g_ao & SIDE_TL_DIAG) {
-				tl -= 0.2f;
+				tl -= dark_val;
 			}
 			if (g_ao & SIDE_BL_DIAG) {
-				bl -= 0.2f;
+				bl -= dark_val;
 			}
 			if (g_ao & SIDE_BR_DIAG) {
-				br -= 0.2f;
+				br -= dark_val;
 			}
 
 			if (tr + bl > br + tl) {
@@ -173,20 +174,20 @@ void add_face(Chunk *chunk, u16 side, u32 x, u32 y, u32 z, u16 neighbors) {
 		} break;
 		case SIDE_BOTTOM: {
 			if (g_ao & SIDE_BACK) {
-				tl -= 0.2f;
-				tr -= 0.2f;
+				tl -= dark_val;
+				tr -= dark_val;
 			}
 			if (g_ao & SIDE_FRONT) {
-				bl -= 0.2f;
-				br -= 0.2f;
+				bl -= dark_val;
+				br -= dark_val;
 			}
 			if (g_ao & SIDE_LEFT) {
-				bl -= 0.2f;
-				tl -= 0.2f;
+				bl -= dark_val;
+				tl -= dark_val;
 			}
 			if (g_ao & SIDE_RIGHT) {
-				br -= 0.2f;
-				tr -= 0.2f;
+				br -= dark_val;
+				tr -= dark_val;
 			}
 
 			chunk->mesh[mesh_size    ] = new_vert(cube_edges[4], offset, tex_id, 0, tl);
@@ -198,20 +199,20 @@ void add_face(Chunk *chunk, u16 side, u32 x, u32 y, u32 z, u16 neighbors) {
 		} break;
 		case SIDE_LEFT: {
 			if (g_ao & SIDE_BOTTOM) {
-				tl -= 0.2f;
-				tr -= 0.2f;
+				tl -= dark_val;
+				tr -= dark_val;
 			}
 			if (g_ao & SIDE_TOP) {
-				bl -= 0.2f;
-				br -= 0.2f;
+				bl -= dark_val;
+				br -= dark_val;
 			}
 			if (g_ao & SIDE_BACK) {
-				bl -= 0.2f;
-				tl -= 0.2f;
+				bl -= dark_val;
+				tl -= dark_val;
 			}
 			if (g_ao & SIDE_FRONT) {
-				br -= 0.2f;
-				tr -= 0.2f;
+				br -= dark_val;
+				tr -= dark_val;
 			}
 
 			chunk->mesh[mesh_size    ] = new_vert(cube_edges[4], offset, tex_id, 0, tl);
@@ -223,20 +224,20 @@ void add_face(Chunk *chunk, u16 side, u32 x, u32 y, u32 z, u16 neighbors) {
 		} break;
 		case SIDE_RIGHT: {
 			if (g_ao & SIDE_BOTTOM) {
-				tl -= 0.2f;
-				tr -= 0.2f;
+				tl -= dark_val;
+				tr -= dark_val;
 			}
 			if (g_ao & SIDE_TOP) {
-				bl -= 0.2f;
-				br -= 0.2f;
+				bl -= dark_val;
+				br -= dark_val;
 			}
 			if (g_ao & SIDE_FRONT) {
-				bl -= 0.2f;
-				tl -= 0.2f;
+				bl -= dark_val;
+				tl -= dark_val;
 			}
 			if (g_ao & SIDE_BACK) {
-				br -= 0.2f;
-				tr -= 0.2f;
+				br -= dark_val;
+				tr -= dark_val;
 			}
 			chunk->mesh[mesh_size    ] = new_vert(cube_edges[1], offset, tex_id, 0, tl);
 			chunk->mesh[mesh_size + 1] = new_vert(cube_edges[5], offset, tex_id, 1, tr);
@@ -247,20 +248,20 @@ void add_face(Chunk *chunk, u16 side, u32 x, u32 y, u32 z, u16 neighbors) {
 		} break;
 		case SIDE_FRONT: {
 			if (g_ao & SIDE_BOTTOM) {
-				tl -= 0.2f;
-				tr -= 0.2f;
+				tl -= dark_val;
+				tr -= dark_val;
 			}
 			if (g_ao & SIDE_TOP) {
-				bl -= 0.2f;
-				br -= 0.2f;
+				bl -= dark_val;
+				br -= dark_val;
 			}
 			if (g_ao & SIDE_LEFT) {
-				bl -= 0.2f;
-				tl -= 0.2f;
+				bl -= dark_val;
+				tl -= dark_val;
 			}
 			if (g_ao & SIDE_RIGHT) {
-				br -= 0.2f;
-				tr -= 0.2f;
+				br -= dark_val;
+				tr -= dark_val;
 			}
 			chunk->mesh[mesh_size    ] = new_vert(cube_edges[0], offset, tex_id, 0, tl);
 			chunk->mesh[mesh_size + 1] = new_vert(cube_edges[1], offset, tex_id, 1, tr);
@@ -271,20 +272,20 @@ void add_face(Chunk *chunk, u16 side, u32 x, u32 y, u32 z, u16 neighbors) {
 		} break;
 		case SIDE_BACK: {
 			if (g_ao & SIDE_BOTTOM) {
-				tl -= 0.2f;
-				tr -= 0.2f;
+				tl -= dark_val;
+				tr -= dark_val;
 			}
 			if (g_ao & SIDE_TOP) {
-				bl -= 0.2f;
-				br -= 0.2f;
+				bl -= dark_val;
+				br -= dark_val;
 			}
 			if (g_ao & SIDE_RIGHT) {
-				bl -= 0.2f;
-				tl -= 0.2f;
+				bl -= dark_val;
+				tl -= dark_val;
 			}
 			if (g_ao & SIDE_LEFT) {
-				br -= 0.2f;
-				tr -= 0.2f;
+				br -= dark_val;
+				tr -= dark_val;
 			}
 			chunk->mesh[mesh_size    ] = new_vert(cube_edges[5], offset, tex_id, 0, tl);
 			chunk->mesh[mesh_size + 1] = new_vert(cube_edges[4], offset, tex_id, 1, tr);
@@ -345,6 +346,7 @@ Chunk *generate_chunk(u32 x_off, u32 z_off) {
 u64 generate_mesh(Chunk **chunks) {
 	u64 total_mesh_size = 0;
 	u64 face = 0;
+	u64 blocks = 0;
 	for (u32 c_x = 1; c_x <= NUM_X_CHUNKS; ++c_x) {
 		for (u32 c_z = 1; c_z <= NUM_Z_CHUNKS; ++c_z) {
 			Chunk *chunk = chunks[COMPRESS_TWO(c_x, c_z, NUM_X_CHUNKS + 2)];
@@ -359,6 +361,7 @@ u64 generate_mesh(Chunk **chunks) {
 							if (chunk->blocks[x][y][z] != 0) {
 								u16 air_neighbors = get_air_neighbors(chunk, x, y, z);
 
+								u64 tmp_face = face;
 								if (air_neighbors & SIDE_TOP) {
 									u16 ao_neighbors = get_air_neighbors(chunk, x, y + 1, z);
 									add_face(chunk, SIDE_TOP, x, y, z, ao_neighbors);
@@ -367,6 +370,7 @@ u64 generate_mesh(Chunk **chunks) {
 								if (air_neighbors & SIDE_BOTTOM) {
 									u16 ao_neighbors = get_air_neighbors(chunk, x, y - 1, z);
 									add_face(chunk, SIDE_BOTTOM, x, y, z, ao_neighbors);
+									face += 1;
 								}
 								if (air_neighbors & SIDE_LEFT) {
 									u16 ao_neighbors = get_air_neighbors(chunk, x - 1, y, z);
@@ -388,6 +392,10 @@ u64 generate_mesh(Chunk **chunks) {
 									add_face(chunk, SIDE_BACK, x, y, z, ao_neighbors);
 									face += 1;
 								}
+
+								if (tmp_face != face) {
+									blocks += 1;
+								}
 							}
 						}
 					}
@@ -397,6 +405,7 @@ u64 generate_mesh(Chunk **chunks) {
 		}
 	}
 
+	printf("blocks: %llu\n", blocks);
 	printf("faces: %llu\n", face);
 	return total_mesh_size;
 }
@@ -456,7 +465,7 @@ int main() {
 	glVertexAttribPointer(a_points, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
 	glVertexAttribIPointer(a_tex_side, 1, GL_UNSIGNED_BYTE, sizeof(Vertex), (void *)STRUCT_OFFSET(Vertex, t_point));
 	glVertexAttribIPointer(a_tex_idx, 1, GL_UNSIGNED_BYTE, sizeof(Vertex), (void *)STRUCT_OFFSET(Vertex, tex_id));
-	glVertexAttribPointer(a_ao, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *)STRUCT_OFFSET(Vertex, ao));
+	glVertexAttribIPointer(a_ao, 1, GL_UNSIGNED_BYTE, sizeof(Vertex), (void *)STRUCT_OFFSET(Vertex, ao));
 
 	glViewport(0, 0, screen_width, screen_height);
     glEnable(GL_DEPTH_TEST);
@@ -470,6 +479,7 @@ int main() {
 		for (u32 z = 1; z <= NUM_Z_CHUNKS; z++) {
 			Chunk *chunk = generate_chunk(x - 1, z - 1);
     		chunks[COMPRESS_TWO(x, z, NUM_X_CHUNKS + 2)] = chunk;
+
 		}
 	}
 	for (u32 x = 0; x <= NUM_X_CHUNKS; x++) {
@@ -481,7 +491,6 @@ int main() {
 	}
 
 	u64 total_mesh_size = generate_mesh(chunks);
-
 
 	glBufferData(GL_ARRAY_BUFFER, total_mesh_size * sizeof(Vertex), NULL, GL_STATIC_DRAW);
 	u64 mesh_indent = 0;
@@ -495,8 +504,11 @@ int main() {
 		}
 	}
 
+
 	f32 current_time = (f32)SDL_GetTicks() / 60.0;
-	f32 t = 0.0;
+
+	f64 fps_last_tick = (f64)SDL_GetTicks() / 1000.0;
+	u64 frames = 0;
 
 	glm::vec3 cam_pos = glm::vec3(0.0, 50.0, 0.0);
 	glm::vec3 cam_front = glm::vec3(0.0, 0.0, 1.0);
@@ -515,7 +527,15 @@ int main() {
 		f32 new_time = (f32)SDL_GetTicks() / 60.0;
 		f32 dt = new_time - current_time;
 		current_time = new_time;
-		t += dt;
+
+		f64 fps_curr_tick = (f64)SDL_GetTicks() / 1000.0;
+		frames++;
+
+		if (fps_curr_tick - fps_last_tick >= 1.0) {
+			printf("%f ms/frame\n", 1000.0/(f32)frames);
+			frames = 0;
+			fps_last_tick += 1.0;
+		}
 
 		SDL_PumpEvents();
         const u8 *state = SDL_GetKeyboardState(NULL);

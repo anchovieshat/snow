@@ -3,7 +3,7 @@
 in vec3 points;
 in uint tex_side;
 in uint tex_idx;
-in float ao;
+in uint ao;
 
 uniform mat4 model;
 uniform mat4 pv;
@@ -38,5 +38,6 @@ void main() {
 		} break;
 	}
 
-	f_ao = ao;
+	float ao_f = ao;
+	f_ao = ao_f / 256.0;
 }
