@@ -14,8 +14,8 @@
 #define CHUNK_HEIGHT 128
 #define CHUNK_DEPTH 16
 
-#define NUM_X_CHUNKS 10
-#define NUM_Z_CHUNKS 10
+#define NUM_X_CHUNKS 13
+#define NUM_Z_CHUNKS 13
 
 glm::vec3 cube_edges[] = {
 	glm::vec3(-0.0f, -0.0f,  1.0f),
@@ -27,6 +27,13 @@ glm::vec3 cube_edges[] = {
 	glm::vec3(-0.0f,  1.0f, -0.0f),
 	glm::vec3( 1.0f,  1.0f, -0.0f),
 };
+
+typedef struct KeyHandler {
+	bool up;
+	bool down;
+	bool left;
+	bool right;
+} KeyHandler;
 
 typedef struct Vertex {
 	glm::vec3 point;
@@ -518,6 +525,8 @@ int main() {
 	f32 pitch = 0.0f;
 	f32 cam_speed = 0.75f;
 
+	KeyHandler keyboard;
+
 	bool running = true;
 	bool warped = false;
 	bool warp = false;
@@ -537,19 +546,18 @@ int main() {
 			fps_last_tick += 1.0;
 		}
 
-		SDL_PumpEvents();
-        const u8 *state = SDL_GetKeyboardState(NULL);
+		const u8 *state = SDL_GetKeyboardState(NULL);
 		if (state[SDL_SCANCODE_W]) {
-			cam_pos += cam_speed * cam_front * dt;
+			keyboard.up = true;
 		}
 		if (state[SDL_SCANCODE_S]) {
-			cam_pos -= cam_speed * cam_front * dt;
+			keyboard.down = true;
 		}
 		if (state[SDL_SCANCODE_A]) {
-			cam_pos -= glm::normalize(glm::cross(cam_front, cam_up)) * cam_speed * dt;
+			keyboard.left = true;
 		}
 		if (state[SDL_SCANCODE_D]) {
-			cam_pos += glm::normalize(glm::cross(cam_front, cam_up)) * cam_speed * dt;
+			keyboard.right = true;
 		}
 
 		while (SDL_PollEvent(&event)) {
@@ -590,7 +598,6 @@ int main() {
 						}
 
 						cam_front = glm::vec3(cos(glm::radians(yaw)) * cos(glm::radians(pitch)), sin(glm::radians(pitch)), sin(glm::radians(yaw)) * cos(glm::radians(pitch)));
-
 					} else {
 						warped = false;
 					}
@@ -604,6 +611,20 @@ int main() {
 				} break;
 			}
 		}
+
+		if (keyboard.up) {
+			cam_pos += cam_speed * cam_front * dt;
+		}
+		if (keyboard.down) {
+			cam_pos -= cam_speed * cam_front * dt;
+		}
+		if (keyboard.left) {
+			cam_pos -= glm::normalize(glm::cross(cam_front, cam_up)) * cam_speed * dt;
+		}
+		if (keyboard.right) {
+			cam_pos += glm::normalize(glm::cross(cam_front, cam_up)) * cam_speed * dt;
+		}
+		bzero(&keyboard, sizeof(KeyHandler));
 
 		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 		glUseProgram(obj_shader);
